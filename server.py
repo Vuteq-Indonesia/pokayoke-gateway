@@ -19,35 +19,40 @@ def main():
     # 2. Koneksi ke PLC
     print("🔌 Koneksi ke PLC...")
     plc = PLCConnector(ip="192.168.63.254", port=5040)
+
+    # Jalankan auto_connect di thread terpisah
+    plc_thread = threading.Thread(target=plc.auto_connect, daemon=True)
+    plc_thread.start()
+
+    # Coba connect sekali (biar cepat tahu status awal)
     if plc.connect():
         print("✅ PLC Connected")
     else:
-        print("❌ Gagal konek PLC, akan coba auto-reconnect di background")
+        print("❌ Gagal konek PLC, auto-reconnect jalan di background")
 
     # 3. Koneksi ke RabbitMQ
     rmq = RMQClient(
         broker_ip="10.10.10.10",
-        broker_port=6572,
+        broker_port=5672,  # default AMQP port
         queues_string="junbiki_inventory_lamp_test",
-        username="junbiki",
-        password="junbiki",
+        username="ansei",
+        password="ansei",
         plc_connector=plc
     )
 
     # Jalankan listener RMQ di thread terpisah
-    def run_rmq():
-        rmq.listen()
-
-    rmq_thread = threading.Thread(target=run_rmq, daemon=True)
+    rmq_thread = threading.Thread(target=rmq.listen, daemon=True)
     rmq_thread.start()
 
     print("👂 Server siap menerima pesan dari RMQ...")
 
-    # Loop utama (misalnya untuk monitoring)
+    # Loop utama (misalnya untuk monitoring / health check)
     try:
         while True:
             time.sleep(5)
-            # bisa tambahkan health check disini kalau perlu
+            # Contoh: bisa tambahkan log kesehatan koneksi
+            if not plc.connected:
+                print("⚠️ PLC belum terkoneksi, auto_connect masih mencoba...")
     except KeyboardInterrupt:
         print("\n🛑 Server dihentikan manual.")
 

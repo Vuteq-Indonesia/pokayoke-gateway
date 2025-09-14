@@ -1,3 +1,5 @@
+import traceback
+
 import pika
 import time
 from tools.handler_message import handle_command
@@ -7,10 +9,10 @@ class RMQClient:
     def __init__(
         self,
         broker_ip="10.10.10.10",
-        broker_port=6572,
+        broker_port=5672,
         queues_string="junbiki_inventory_lamp_test",
-        username="junbiki",
-        password="junbiki",
+        username="ansei",
+        password="ansei",
         plc_connector=None  # <<<< tambahan untuk PLC
     ):
         self.broker_ip = broker_ip
@@ -101,5 +103,6 @@ class RMQClient:
 
             except Exception as e:
                 print(f"❌ Listener terputus: {e}")
+                traceback.print_exc()  # <--- ini buat print full stacktrace
                 print("🔄 Reconnect dalam 3 detik...")
                 time.sleep(3)
