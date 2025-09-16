@@ -20,7 +20,12 @@ PLC_REGISTERS = {
         for i in range(1, 51)
     ],
     "F": [
-        {"code": f"F{i}", "reg": "D117", "button": "D1027", "lamp": "D1037"}
+        {
+            "code": f"F{i}",
+            "reg": "D119" if i in [3, 14, 17] else "D117",
+            "button": "D1028" if i in [3, 14, 17] else "D1027",
+            "lamp": "D1038" if i in [3, 14, 17] else "D1037",
+        }
         for i in range(1, 51)
     ],
     "AA": [
