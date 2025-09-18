@@ -2,9 +2,39 @@ PLC_REGISTERS = {
     "A": [
         {
             "code": f"A{i}",
-            "reg": "D102" if i in [15, 16, 17, 18, 19,20,21,22,23,24,25,26,27,28] else "D100",
-            "button": "D1002" if i in [15, 16, 17, 18, 19,20,21,22,23,24,25,26,27,28] else "D1000",
-            "lamp": "D1012" if i in [15, 16, 17, 18, 19,20,21,22,23,24,25,26,27,28] else "D1010",
+            "reg": (
+                "D100" if i in [4, 6]
+                else "D102" if i in [20, 18]
+                else "D140" if i in [7, 5]
+                else "D142" if i in [21, 19]
+                else "D144" if i in [3]
+                else "D146" if i in [17]
+                else "D148" if i in [2, 1]
+                else "D150" if i in [15, 16]
+                else None
+            ),
+            "button": (
+                "D1000" if i in [4, 6]
+                else "D1002" if i in [20, 18]
+                else "D1100" if i in [7, 5]
+                else "D1102" if i in [21, 19]
+                else "D1104" if i in [3]
+                else "D1106" if i in [17]
+                else "D1108" if i in [2, 1]
+                else "D1110" if i in [15, 16]
+                else None
+            ),
+            "lamp": (
+                "D1010" if i in [4, 6]
+                else "D1012" if i in [20, 18]
+                else "D1101" if i in [7, 5]
+                else "D1103" if i in [21, 19]
+                else "D1105" if i in [3]
+                else "D1107" if i in [17]
+                else "D1109" if i in [2, 1]
+                else "D1111" if i in [15, 16]
+                else None
+            ),
         }
         for i in range(1, 51)
     ],
