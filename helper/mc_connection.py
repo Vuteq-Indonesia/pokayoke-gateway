@@ -35,7 +35,6 @@ class PLCConnector:
             return False
 
     def auto_connect(self):
-        """Loop auto-reconnect dengan delay 3 detik"""
         while True:
             if not self.connected:
                 if self.connect():
@@ -48,8 +47,10 @@ class PLCConnector:
         for group, items in PLC_REGISTERS.items():
             for regmap in items:
                 for key in ["reg", "button", "lamp"]:
-                    device = regmap[key]
-                    if device not in already_reset:
+                    device = regmap.get(key)
+                    if device and device not in already_reset:
+                        self.batch_write(device, [0])
+                        already_reset.add(device)
                         try:
                             self.batch_write(device, [0])
                             already_reset.add(device)
@@ -58,7 +59,9 @@ class PLCConnector:
         print("♻️ Semua register direset ke 0")
 
     def batch_write(self, device, values):
-        """Tulis data ke PLC"""
+        if device is None:
+            print("⚠️ Device kosong, skip write")
+            return False
         if not self.connected:
             print("⚠️ PLC belum terkoneksi!")
             return False
@@ -66,9 +69,14 @@ class PLCConnector:
             self.mc.batchwrite_wordunits(headdevice=device, values=values)
             print(f"✍️ Write {values} ke {device} sukses")
             return True
+        except (OSError, TimeoutError) as e:
+            # error komunikasi
+            self.connected = False
+            print(f"❌ Koneksi hilang saat write {device}: {e}")
+            return False
         except Exception as e:
-            self.connected = False  # tandai lost connection
-            print(f"❌ Gagal write ke {device}: {e}")
+            # error logic (misal device/format salah)
+            print(f"⚠️ Error write ke {device}: {e}")
             return False
 
     def batch_read(self, device, size):
