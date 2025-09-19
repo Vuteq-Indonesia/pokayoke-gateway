@@ -1,5 +1,4 @@
 import traceback
-
 import pika
 import time
 from tools.handler_message import handle_command
@@ -13,7 +12,8 @@ class RMQClient:
         queues_string="junbiki_inventory_lamp_test",
         username="ansei",
         password="ansei",
-        plc_connector=None  # <<<< tambahan untuk PLC
+        plc_connector=None,
+        ui=None  # <<<< tambahan, referensi ke UI
     ):
         self.broker_ip = broker_ip
         self.broker_port = broker_port
@@ -21,8 +21,16 @@ class RMQClient:
         self.username = username
         self.password = password
         self.plc_connector = plc_connector
+        self.ui = ui
 
         self.credentials = pika.PlainCredentials(self.username, self.password)
+
+    def log(self, message: str):
+        """Kirim log ke UI kalau ada, kalau tidak fallback ke print"""
+        if self.ui:
+            self.ui.write_log(message)
+        else:
+            print(message)
 
     def send(self, message, retry=True):
         """Kirim pesan ke RabbitMQ, auto-reconnect kalau gagal"""
@@ -45,15 +53,15 @@ class RMQClient:
                     properties=pika.BasicProperties(delivery_mode=2)  # persistent
                 )
 
-                print(f"✅ Pesan terkirim ke {self.queues_string}: {message}")
+                self.log(f"✅ Pesan terkirim ke {self.queues_string}: {message}")
                 connection.close()
                 return True
 
             except Exception as e:
-                print(f"❌ Gagal kirim pesan RMQ: {e}")
+                self.log(f"❌ Gagal kirim pesan RMQ: {e}")
                 if not retry:
                     return False
-                print("🔄 Coba lagi dalam 3 detik...")
+                self.log("🔄 Coba lagi dalam 3 detik...")
                 time.sleep(3)
 
     def listen(self):
@@ -72,25 +80,26 @@ class RMQClient:
                 channel = connection.channel()
                 channel.queue_declare(queue=self.queues_string, durable=True)
 
-                print(f"✅ Terhubung ke RabbitMQ {self.broker_ip}:{self.broker_port}, listening queue: {self.queues_string}")
+                self.log(f"✅ Terhubung ke RabbitMQ {self.broker_ip}:{self.broker_port}, listening queue: {self.queues_string}")
 
                 # default callback
                 def callback(ch, method, properties, body):
                     try:
                         data = body.decode()
-                        print(f"📩 Pesan diterima: {data}")
+                        self.log(f"📩 Pesan diterima: {data}")
 
                         if handle_command:
-                            success = handle_command(data, self.plc_connector)  # <<<< panggil dengan PLC
+                            success = handle_command(data, self.plc_connector, self.ui)
                             if success:
                                 ch.basic_ack(delivery_tag=method.delivery_tag)
                             else:
-                                print("⚠️ Pesan gagal diproses, tidak ack.")
+                                self.log("⚠️ Pesan gagal diproses, tidak ack.")
                         else:
                             ch.basic_ack(delivery_tag=method.delivery_tag)
 
                     except Exception as e:
-                        print(f"❌ Error saat handle message: {e}")
+                        self.log(f"❌ Error saat handle message: {e}")
+                        traceback.print_exc()
 
                 channel.basic_consume(
                     queue=self.queues_string,
@@ -98,11 +107,11 @@ class RMQClient:
                     auto_ack=False
                 )
 
-                print("👂 Menunggu pesan... (CTRL+C untuk stop)")
+                self.log("👂 Menunggu pesan... (CTRL+C untuk stop)")
                 channel.start_consuming()
 
             except Exception as e:
-                print(f"❌ Listener terputus: {e}")
-                traceback.print_exc()  # <--- ini buat print full stacktrace
-                print("🔄 Reconnect dalam 3 detik...")
+                self.log(f"❌ Listener terputus: {e}")
+                traceback.print_exc()
+                self.log("🔄 Reconnect dalam 3 detik...")
                 time.sleep(3)
