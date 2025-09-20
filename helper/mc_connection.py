@@ -5,6 +5,7 @@ import time
 import pymcprotocol
 from tools.register import PLC_REGISTERS
 import requests
+import docker
 
 class PLCConnector:
     def __init__(self, ip="192.168.63.254", port=5040, timeout=5):
@@ -60,7 +61,8 @@ class PLCConnector:
                 if values and values[0] == 1:
                     print("⚡ D10 terdeteksi = 1 → Reboot sistem...")
                     # sys.exit(1)
-                    os.system("reboot now")
+                    docker_client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+                    docker_client.containers.get("container_name").restart()
                     break  # stop loop setelah reboot dipanggil
             except Exception as e:
                 print(f"⚠️ Listener error: {e}")
