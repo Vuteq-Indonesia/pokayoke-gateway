@@ -59,7 +59,8 @@ class PLCConnector:
                 values = self.batch_read("D10", 1)
                 if values and values[0] == 1:
                     print("⚡ D10 terdeteksi = 1 → Reboot sistem...")
-                    sys.exit(1)
+                    # sys.exit(1)
+                    os.system("reboot now")
                     break  # stop loop setelah reboot dipanggil
             except Exception as e:
                 print(f"⚠️ Listener error: {e}")
