@@ -8,7 +8,7 @@ from tools.handler_message import handle_command
 class RMQClient:
     def __init__(
         self,
-        broker_ip="103.224.124.82",
+        broker_ip="10.10.10.60",
         broker_port=5672,
         queues_string="junbiki_inventory_lamp_test",
         username="ansei",
