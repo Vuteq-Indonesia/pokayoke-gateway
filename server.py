@@ -32,7 +32,7 @@ def main():
 
     # 3. Koneksi ke RabbitMQ
     rmq = RMQClient(
-        broker_ip="10.10.10.60",
+        broker_ip="103.103.23.26",
         broker_port=5672,  # default AMQP port
         queues_string="junbiki_inventory_lamp_test",
         username="ansei",

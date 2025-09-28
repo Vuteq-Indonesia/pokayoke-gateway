@@ -119,7 +119,7 @@ class PLCConnector:
             print("✅ D10 direset ke 0")
             # 🔹 Post ke API setelah D10 reset
             try:
-                resp = requests.post("http://10.10.10.60:1000/v1/lamp/init-check", timeout=5)
+                resp = requests.post("http://103.103.23.26:1000/v1/lamp/init-check", timeout=5)
                 print(f"🌐 API response {resp.status_code}: {resp.text}")
             except Exception as e:
                 print(f"⚠️ Gagal call API init-check: {e}")
