@@ -8,12 +8,12 @@ from tools.handler_message import handle_command
 class RMQClient:
     def __init__(
         self,
-        broker_ip="103.103.23.26",
-        broker_port=5672,
-        queues_string="junbiki_inventory_lamp_test",
-        username="ansei",
-        password="ansei",
-        plc_connector=None  # <<<< tambahan untuk PLC
+        broker_ip=None,
+        broker_port=None,
+        queues_string=None,
+        username=None,
+        password=None,
+        plc_connector=None
     ):
         self.broker_ip = broker_ip
         self.broker_port = broker_port

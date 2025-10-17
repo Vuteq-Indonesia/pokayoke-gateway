@@ -1,12 +1,28 @@
+import asyncio
 import threading
 import time
 
 import docker
+import httpx
 import pymcprotocol
 import requests
 
 from tools.register import PLC_REGISTERS
 
+
+def int_to_button_name(value: int) -> str | None:
+    """Konversi nilai integer PLC ke nama tombol (misal 225 -> E1, 3600 -> E10)."""
+    if value <= 0:
+        return None
+    return hex(value)[2:].upper()  # contoh: 225 -> "E1"
+
+async def send_lamp_disable(btn_code):
+    if btn_code.startswith("E"):
+        url = "http://103.103.23.26:1000/v1/lamp/disable"
+        payload = {"lampId": btn_code}
+        async with httpx.AsyncClient(timeout=3) as client:
+            res = await client.post(url, json=payload)
+            print(f"🌐 API {btn_code} -> {res.status_code}")
 
 class PLCConnector:
     def __init__(self, ip="192.168.63.254", port=5040, timeout=5):
@@ -16,6 +32,7 @@ class PLCConnector:
         self.mc = pymcprotocol.Type3E()
         self.connected = False
         self.listener_thread = None
+        self.button_thread = None
         self.stop_listener = False
 
     def connect(self):
@@ -37,9 +54,21 @@ class PLCConnector:
             if not self.listener_thread or not self.listener_thread.is_alive():
                 self.stop_listener = False
                 self.listener_thread = threading.Thread(
-                    target=self.listen_d10, daemon=True
+                    target=self.listen_d10,
+                    daemon=True
                 )
                 self.listener_thread.start()
+                print("▶️ Listener D10 dimulai...")
+
+            # Jalankan listener tombol (E, F, dll)
+            if not hasattr(self, "button_thread") or not self.button_thread.is_alive():
+                self.stop_listener = False
+                self.button_thread = threading.Thread(
+                    target=self.listen_button,
+                    daemon=True
+                )
+                self.button_thread.start()
+                print("▶️ Listener tombol dimulai...")
 
             return True
 
@@ -47,6 +76,7 @@ class PLCConnector:
             self.connected = False
             print(f"❌ Gagal konek PLC {self.ip}:{self.port}: {e}")
             return False
+
     def auto_connect(self):
         while True:
             if not self.connected:
@@ -178,3 +208,69 @@ class PLCConnector:
         except Exception as e:
             print(f"❌ Gagal reset_and_write {reg_device}/{off_device}: {e}")
             return False
+    def reset_button(self, reg_device):
+        try:
+            self.batch_write(reg_device, [0])
+            return True
+        except Exception as e:
+            print(f"❌ Gagal reset_and_write {reg_device}: {e}")
+            return False
+    def listen_button(self):
+        """Listener tombol: baca nilai dari PLC, konversi int->hex code, trigger lampu & API"""
+        print("👂 Listener tombol (HEX konversi + API) aktif...")
+
+        # kumpulkan semua address yang punya field "button"
+        button_addrs = []
+        for group, items in PLC_REGISTERS.items():
+            for item in items:
+                if item["button"] and item["button"] not in button_addrs:
+                    button_addrs.append(item["button"])
+
+        print(f"🔎 Memantau {len(button_addrs)} register tombol:", button_addrs)
+
+        # simpan status terakhir tombol
+        last_state = {addr: 0 for addr in button_addrs}
+
+        while not self.stop_listener:
+            try:
+                values = self.batch_read(button_addrs, len(button_addrs))
+                if not values:
+                    continue
+
+                for addr, val in zip(button_addrs, values):
+                    prev = last_state.get(addr, 0)
+                    last_state[addr] = val
+
+                    # --- deteksi "baru ditekan" (rising edge) ---
+                    if val != 0 and prev == 0:
+                        btn_code = int_to_button_name(val)
+                        if not btn_code:
+                            continue
+
+                        print(f"🔘 Tombol {btn_code} terdeteksi di {addr} (value={val})")
+
+                        # cari item dengan code yang sama
+                        found = None
+                        for group, items in PLC_REGISTERS.items():
+                            for item in items:
+                                if item["code"].upper() == btn_code.upper():
+                                    found = item
+                                    break
+                            if found:
+                                break
+
+                        # aksi 1: kirim API jika tombol E*
+                        asyncio.create_task(send_lamp_disable(btn_code))
+
+                        # reset tombol di PLC agar tidak terbaca lagi
+                        self.reset_button(addr)
+
+                    # --- tombol dilepas (val = 0) ---
+                    elif val == 0 and prev != 0:
+                        last_state[addr] = 0  # reset siap baca lagi
+
+            except Exception as e:
+                print(f"⚠️ Listener tombol error: {e}")
+
+            time.sleep(0.1)  # loop cepat, tapi non-blocking
+
