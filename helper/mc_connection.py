@@ -24,6 +24,10 @@ async def send_lamp_disable(btn_code):
             res = await client.post(url, json=payload)
             print(f"🌐 API {btn_code} -> {res.status_code}")
 
+import threading
+import time
+import pymcprotocol
+
 class PLCConnector:
     def __init__(self, ip="192.168.63.254", port=5040, timeout=5):
         self.ip = ip
@@ -34,6 +38,8 @@ class PLCConnector:
         self.listener_thread = None
         self.button_thread = None
         self.stop_listener = False
+        self.auto_reconnect = True  # tambahan opsional
+        self.auto_connect_running = False
 
     def connect(self):
         """Coba koneksi ke PLC (sekali saja)"""
@@ -51,7 +57,7 @@ class PLCConnector:
             self.reset_registers()
 
             # Jalankan listener D10
-            if not self.listener_thread or not self.listener_thread.is_alive():
+            if not getattr(self, "listener_thread", None) or not self.listener_thread.is_alive():
                 self.stop_listener = False
                 self.listener_thread = threading.Thread(
                     target=self.listen_d10,
@@ -61,7 +67,7 @@ class PLCConnector:
                 print("▶️ Listener D10 dimulai...")
 
             # Jalankan listener tombol (E, F, dll)
-            if not hasattr(self, "button_thread") or not self.button_thread.is_alive():
+            if not getattr(self, "button_thread", None) or not self.button_thread.is_alive():
                 self.stop_listener = False
                 self.button_thread = threading.Thread(
                     target=self.listen_button,
@@ -77,12 +83,27 @@ class PLCConnector:
             print(f"❌ Gagal konek PLC {self.ip}:{self.port}: {e}")
             return False
 
-    def auto_connect(self):
-        while True:
+    def disconnect(self):
+        """Putuskan koneksi dan hentikan listener"""
+        self.stop_listener = True
+        self.connected = False
+        try:
+            self.mc.close()
+            print("🔌 Koneksi ke PLC diputus.")
+        except Exception as e:
+            print(f"⚠️ Gagal menutup koneksi PLC: {e}")
+
+    def auto_connect(self, interval=5):
+        if self.auto_connect_running:
+            return  # biar tidak dobel
+
+        self.auto_connect_running = True
+        while self.auto_reconnect:
             if not self.connected:
-                if self.connect():
-                    print("🔗 PLC siap dipakai")
-            time.sleep(3)
+                print("⚠️ PLC belum terkoneksi, mencoba ulang...")
+                self.connect()
+            time.sleep(interval)
+
     def listen_d10(self):
         """Listener cek D10, jika 1 maka reboot"""
         print("👂 Listener D10 aktif...")

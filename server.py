@@ -40,15 +40,15 @@ def main():
     print(f"🔌 Koneksi ke PLC {PLC_IP}:{PLC_PORT} ...")
     plc = PLCConnector(ip=PLC_IP, port=PLC_PORT)
 
-    # Jalankan auto_connect di thread terpisah
-    plc_thread = threading.Thread(target=plc.auto_connect, daemon=True)
-    plc_thread.start()
-
     # Coba connect sekali (biar cepat tahu status awal)
     if plc.connect():
         print("✅ PLC Connected")
     else:
         print("❌ Gagal konek PLC, auto-reconnect jalan di background")
+
+    # Jalankan auto_connect di thread terpisah (setelah percobaan pertama)
+    plc_thread = threading.Thread(target=plc.auto_connect, daemon=True)
+    plc_thread.start()
 
     # === 4. Koneksi ke RabbitMQ ===
     rmq = RMQClient(
