@@ -1,10 +1,7 @@
 import asyncio
-import threading
-import time
 
 import docker
 import httpx
-import pymcprotocol
 import requests
 
 from tools.register import PLC_REGISTERS
@@ -15,14 +12,6 @@ def int_to_button_name(value: int) -> str | None:
     if value <= 0:
         return None
     return hex(value)[2:].upper()  # contoh: 225 -> "E1"
-
-async def send_lamp_disable(btn_code):
-    if btn_code.startswith("E"):
-        url = "http://103.103.23.26:1000/v1/lamp/disable"
-        payload = {"lampId": btn_code}
-        async with httpx.AsyncClient(timeout=3) as client:
-            res = await client.post(url, json=payload)
-            print(f"🌐 API {btn_code} -> {res.status_code}")
 
 import threading
 import time
@@ -40,6 +29,7 @@ class PLCConnector:
         self.stop_listener = False
         self.auto_reconnect = True  # tambahan opsional
         self.auto_connect_running = False
+        self.loop = asyncio.get_event_loop()
 
     def connect(self):
         """Coba koneksi ke PLC (sekali saja)"""
@@ -266,6 +256,15 @@ class PLCConnector:
             print(f"❌ Gagal reset_and_write {reg_device}: {e}")
             return False
 
+    async def send_lamp_disable(self, button, addr):
+        if button.startswith("E"):
+            url = "http://103.102.23.26:1000/v1/lamp/disable"
+            payload = {"lampId": self}
+            async with httpx.AsyncClient(timeout=3) as client:
+                res = await client.post(url, json=payload)
+                print(f"🌐 API {self} -> {res.status_code}")
+                self.reset_button(addr)
+
     def listen_button(self):
         print("👂 Listener tombol aktif...")
 
@@ -276,8 +275,12 @@ class PLCConnector:
                     button_addrs.append(item["button"])
 
         print(f"🔎 Memantau {len(button_addrs)} register tombol:", button_addrs)
+
         last_state = {addr: 0 for addr in button_addrs}
-        was_connected = False  # 🆕 deteksi transisi koneksi
+        last_press_time = {addr: 0 for addr in button_addrs}
+        was_connected = False
+
+        DEBOUNCE_TIME = 0.2  # detik (200 ms)
 
         while not self.stop_listener:
             # 🚦 Cek status koneksi
@@ -300,24 +303,32 @@ class PLCConnector:
 
                 for addr, val in zip(button_addrs, values):
                     prev = last_state.get(addr, 0)
-                    last_state[addr] = val
+                    now = time.time()
 
-                    # Deteksi tombol baru ditekan
+                    # tombol baru ditekan
                     if val != 0 and prev == 0:
+                        # cek bouncing
+                        if now - last_press_time[addr] < DEBOUNCE_TIME:
+                            continue
+                        last_press_time[addr] = now
+                        last_state[addr] = val
+
                         btn_code = int_to_button_name(val)
                         if not btn_code:
                             continue
-                        print(f"🔘 Tombol {btn_code} terdeteksi di {addr} (value={val})")
-                        asyncio.create_task(send_lamp_disable(btn_code))
-                        self.reset_button(addr)
 
-                    # Tombol dilepas
+                        print(f"🔘 Tombol {btn_code} terdeteksi di {addr} (value={val})")
+                        asyncio.run_coroutine_threadsafe(
+                            self.send_lamp_disable(btn_code, addr), self.loop
+                        )
+
+                    # tombol dilepas
                     elif val == 0 and prev != 0:
                         last_state[addr] = 0
 
             except Exception as e:
                 print(f"⚠️ Listener tombol error: {e}")
-                time.sleep(2)  # 🕒 jangan spam kalau error
+                time.sleep(2)
 
             time.sleep(0.1)
 
