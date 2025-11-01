@@ -67,14 +67,7 @@ class PLCConnector:
                 print("▶️ Listener D10 dimulai...")
 
             # Jalankan listener tombol (E, F, dll)
-            if not getattr(self, "button_thread", None) or not self.button_thread.is_alive():
-                self.stop_listener = False
-                self.button_thread = threading.Thread(
-                    target=self.listen_button,
-                    daemon=True
-                )
-                self.button_thread.start()
-                print("▶️ Listener tombol dimulai...")
+            self.start_listeners()
 
             return True
 
@@ -82,6 +75,29 @@ class PLCConnector:
             self.connected = False
             print(f"❌ Gagal konek PLC {self.ip}:{self.port}: {e}")
             return False
+
+    def start_listeners(self):
+        """Mulai semua listener hanya jika belum jalan"""
+        if self.stop_listener:
+            return  # jangan start kalau sedang stop
+
+        # Listener D10
+        if not getattr(self, "listener_thread", None) or not self.listener_thread.is_alive():
+            self.listener_thread = threading.Thread(
+                target=self.listen_d10,
+                daemon=True
+            )
+            self.listener_thread.start()
+            print("▶️ Listener D10 dimulai...")
+
+        # Listener tombol (E, F, dll)
+        if not getattr(self, "button_thread", None) or not self.button_thread.is_alive():
+            self.button_thread = threading.Thread(
+                target=self.listen_button,
+                daemon=True
+            )
+            self.button_thread.start()
+            print("▶️ Listener tombol dimulai...")
 
     def disconnect(self):
         """Putuskan koneksi dan hentikan listener"""
@@ -93,7 +109,7 @@ class PLCConnector:
         except Exception as e:
             print(f"⚠️ Gagal menutup koneksi PLC: {e}")
 
-    def auto_connect(self, interval=5):
+    def auto_connect(self):
         if self.auto_connect_running:
             return  # biar tidak dobel
 
@@ -102,7 +118,7 @@ class PLCConnector:
             if not self.connected:
                 print("⚠️ PLC belum terkoneksi, mencoba ulang...")
                 self.connect()
-            time.sleep(interval)
+            time.sleep(5)
 
     def listen_d10(self):
         """Listener cek D10, jika 1 maka reboot"""
@@ -137,7 +153,8 @@ class PLCConnector:
             self.batch_write("D5", [5])
             self.batch_write("D6", [6])
             self.batch_write("D1", [1])
-            print("🚀 Booting... (D5=5, D6=6, D1=1)")
+            self.batch_write("D2", [2])
+            print("🚀 Booting... (D5=5, D6=6, D1=1, D2=2)")
         except Exception as e:
             print(f"⚠️ Gagal set animasi booting: {e}")
 
@@ -149,7 +166,8 @@ class PLCConnector:
             self.batch_write("D5", [0])
             self.batch_write("D6", [0])
             self.batch_write("D1", [0])
-            print("🔄 Booting selesai, D5/D6/D1 direset ke 0")
+            self.batch_write("D2", [0])
+            print("🔄 Booting selesai, D5/D6/D1/D2 direset ke 0")
         except Exception as e:
             print(f"⚠️ Gagal reset animasi booting: {e}")
 
@@ -198,19 +216,30 @@ class PLCConnector:
             # error logic (misal device/format salah)
             print(f"⚠️ Error write ke {device}: {e}")
             return False
-    def batch_read(self, device, size):
+
+    def batch_read(self, device, size=None):
         """Baca data dari PLC"""
         if not self.connected:
             print("⚠️ PLC belum terkoneksi!")
             return None
+
         try:
-            values = self.mc.batchread_wordunits(headdevice=device, readsize=size)
-            print(f"📖 Read {device} ({size}): {values}")
-            return values
+            if isinstance(device, list):
+                results = []
+                for d in device:
+                    val = self.mc.batchread_wordunits(headdevice=d, readsize=1)
+                    results.extend(val)
+                return results
+            else:
+                values = self.mc.batchread_wordunits(headdevice=device, readsize=size)
+                print(f"📖 Read {device} ({size}): {values}")
+                return values
+
         except Exception as e:
             self.connected = False  # tandai lost connection
             print(f"❌ Gagal read {device}: {e}")
             return None
+
     def reset_and_write(self, reg_device, off_device, index, mode="on"):
         """Helper untuk reset dan tulis ke register/lampu"""
         try:
@@ -236,11 +265,10 @@ class PLCConnector:
         except Exception as e:
             print(f"❌ Gagal reset_and_write {reg_device}: {e}")
             return False
-    def listen_button(self):
-        """Listener tombol: baca nilai dari PLC, konversi int->hex code, trigger lampu & API"""
-        print("👂 Listener tombol (HEX konversi + API) aktif...")
 
-        # kumpulkan semua address yang punya field "button"
+    def listen_button(self):
+        print("👂 Listener tombol aktif...")
+
         button_addrs = []
         for group, items in PLC_REGISTERS.items():
             for item in items:
@@ -248,50 +276,48 @@ class PLCConnector:
                     button_addrs.append(item["button"])
 
         print(f"🔎 Memantau {len(button_addrs)} register tombol:", button_addrs)
-
-        # simpan status terakhir tombol
         last_state = {addr: 0 for addr in button_addrs}
+        was_connected = False  # 🆕 deteksi transisi koneksi
 
         while not self.stop_listener:
+            # 🚦 Cek status koneksi
+            if not self.connected:
+                if was_connected:
+                    print("⚠️ Listener tombol: PLC terputus, menunggu reconnect...")
+                    was_connected = False
+                time.sleep(1)
+                continue
+            else:
+                if not was_connected:
+                    print("✅ Listener tombol: PLC tersambung kembali.")
+                    was_connected = True
+
             try:
                 values = self.batch_read(button_addrs, len(button_addrs))
                 if not values:
+                    time.sleep(0.2)
                     continue
 
                 for addr, val in zip(button_addrs, values):
                     prev = last_state.get(addr, 0)
                     last_state[addr] = val
 
-                    # --- deteksi "baru ditekan" (rising edge) ---
+                    # Deteksi tombol baru ditekan
                     if val != 0 and prev == 0:
                         btn_code = int_to_button_name(val)
                         if not btn_code:
                             continue
-
                         print(f"🔘 Tombol {btn_code} terdeteksi di {addr} (value={val})")
-
-                        # cari item dengan code yang sama
-                        found = None
-                        for group, items in PLC_REGISTERS.items():
-                            for item in items:
-                                if item["code"].upper() == btn_code.upper():
-                                    found = item
-                                    break
-                            if found:
-                                break
-
-                        # aksi 1: kirim API jika tombol E*
                         asyncio.create_task(send_lamp_disable(btn_code))
-
-                        # reset tombol di PLC agar tidak terbaca lagi
                         self.reset_button(addr)
 
-                    # --- tombol dilepas (val = 0) ---
+                    # Tombol dilepas
                     elif val == 0 and prev != 0:
-                        last_state[addr] = 0  # reset siap baca lagi
+                        last_state[addr] = 0
 
             except Exception as e:
                 print(f"⚠️ Listener tombol error: {e}")
+                time.sleep(2)  # 🕒 jangan spam kalau error
 
             time.sleep(0.1)
 
