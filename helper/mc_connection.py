@@ -272,5 +272,5 @@ class PLCConnector:
             except Exception as e:
                 print(f"⚠️ Listener tombol error: {e}")
 
-            time.sleep(0.1)  # loop cepat, tapi non-blocking
+            time.sleep(0.1)
 
