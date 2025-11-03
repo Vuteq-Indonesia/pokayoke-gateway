@@ -57,7 +57,7 @@ class PLCConnector:
                 print("▶️ Listener D10 dimulai...")
 
             # Jalankan listener tombol (E, F, dll)
-            self.start_listeners()
+            # self.start_listeners()
 
             return True
 
