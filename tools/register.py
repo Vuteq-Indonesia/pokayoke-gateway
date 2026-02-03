@@ -81,11 +81,11 @@ PLC_REGISTERS = {
         for i in range(1, 51)
     ],
     "AA": [
-        {"code": f"AA{i}", "reg": "D120", "button": "D1040", "lamp": "D1050"}
+        {"code": f"AA{i}", "reg": "D122", "button": "D1042", "lamp": "D1052"}
         for i in range(1, 51)
     ],
     "AB": [
-        {"code": f"AB{i}", "reg": "D124", "button": "D1043", "lamp": "D1053"}
+        {"code": f"AB{i}", "reg": "D124", "button": "D1044", "lamp": "D1054"}
         for i in range(1, 51)
     ],
 }
