@@ -81,11 +81,47 @@ PLC_REGISTERS = {
         for i in range(1, 51)
     ],
     "AA": [
-        {"code": f"AA{i}", "reg": "D122", "button": "D1042", "lamp": "D1052"}
+        {
+            "code": f"AA{i}",
+            "reg":(
+                "D122" if i in [1,3,5,10]
+                else "D180" if i in [2,8,9,6]
+                else None
+            ) ,
+            "button": (
+                "D1042" if i in [1,3,5,10]
+                else "D1200" if i in [2,8,9,6]
+                else None
+            ),
+            "lamp": (
+                "D1052" if i in [1, 3, 5, 10]
+                else "D1202" if i in [2, 8, 9, 6]
+                else None
+            )
+        }
         for i in range(1, 51)
+        # {"code": f"AA{i}", "reg": "D122", "button": "D1042", "lamp": "D1052"}
     ],
     "AB": [
-        {"code": f"AB{i}", "reg": "D124", "button": "D1044", "lamp": "D1054"}
+        {
+            "code": f"AB{i}",
+            "reg": (
+                "D124" if i in [1, 2]
+                else "D1044" if i in [3]
+                else None
+            ),
+            "button": (
+                "D1044" if i in [1, 2]
+                else "D1204" if i in [3]
+                else None
+            ),
+            "lamp": (
+                "D1054" if i in [1, 2]
+                else "D1206" if i in [3]
+                else None
+            )
+        }
+        # {"code": f"AB{i}", "reg": "D124", "button": "D1044", "lamp": "D1054"}
         for i in range(1, 51)
     ],
 }
