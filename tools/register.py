@@ -85,17 +85,17 @@ PLC_REGISTERS = {
             "code": f"AA{i}",
             "reg":(
                 "D122" if i in [1,3,5,10,7]
-                else "D180" if i in [2,8,9,6]
+                else "D180" if i in [2,8,9,6,4]
                 else None
             ) ,
             "button": (
                 "D1042" if i in [1,3,5,10,7]
-                else "D1200" if i in [2,8,9,6]
+                else "D1200" if i in [2,8,9,6,4]
                 else None
             ),
             "lamp": (
                 "D1052" if i in [1, 3, 5, 10,7]
-                else "D1202" if i in [2, 8, 9, 6]
+                else "D1202" if i in [2, 8, 9, 6,4]
                 else None
             )
         }
