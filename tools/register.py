@@ -3,36 +3,42 @@ PLC_REGISTERS = {
         {
             "code": f"A{i}",
             "reg": (
-                "D100" if i in [4, 6]
-                else "D102" if i in [20, 18]
-                else "D140" if i in [7, 5]
-                else "D142" if i in [21, 19]
-                else "D144" if i in [3]
-                else "D146" if i in [17]
-                else "D148" if i in [2, 1]
-                else "D150" if i in [15, 16]
+                "D100" if i in [4, 6, 11,12,13,14]
+                else "D102" if i in [20, 18, 25,26,27,28]
+                else "D140" if i in [7, 5, 36,37,38]
+                else "D142" if i in [21, 19, 29, 30, 31]
+                else "D144" if i in [3, 10, 24]
+                else "D146" if i in [17, 9, 23]
+                else "D148" if i in [2, 1, 8]
+                else "D150" if i in [15, 16, 22]
+                else "D156" if i in [39, 40, 41, 42]
+                else "D158" if i in [32, 33, 34, 35]
                 else None
             ),
             "button": (
-                "D1000" if i in [4, 6]
-                else "D1002" if i in [20, 18]
-                else "D1100" if i in [7, 5]
-                else "D1102" if i in [21, 19]
-                else "D1104" if i in [3]
-                else "D1106" if i in [17]
-                else "D1108" if i in [2, 1]
-                else "D1110" if i in [15, 16]
+                "D1000" if i in [4, 6, 11,12,13,14]
+                else "D1002" if i in [20, 18, 25,26,27,28]
+                else "D1100" if i in [7, 5, 36,37,38]
+                else "D1102" if i in [21, 19, 29, 30, 31]
+                else "D1104" if i in [3, 10, 24]
+                else "D1106" if i in [17, 9, 23]
+                else "D1108" if i in [2, 1, 8]
+                else "D1110" if i in [15, 16, 22]
+                else "D1112" if i in [39, 40, 41, 42]
+                else "D1114" if i in [32, 33, 34, 35]
                 else None
             ),
             "lamp": (
-                "D1010" if i in [4, 6]
-                else "D1012" if i in [20, 18]
-                else "D1101" if i in [7, 5]
-                else "D1103" if i in [21, 19]
-                else "D1105" if i in [3]
-                else "D1107" if i in [17]
-                else "D1109" if i in [2, 1]
-                else "D1111" if i in [15, 16]
+                "D1010" if i in [4, 6, 11,12,13,14]
+                else "D1012" if i in [20, 18, 25,26,27,28]
+                else "D1101" if i in [7, 5, 36,37,38]
+                else "D1103" if i in [21, 19, 29, 30, 31]
+                else "D1105" if i in [3, 10, 24]
+                else "D1107" if i in [17, 9, 23]
+                else "D1109" if i in [2, 1, 8]
+                else "D1111" if i in [15, 16, 22]
+                else "D1113" if i in [39, 40, 41, 42]
+                else "D1115" if i in [32, 33, 34, 35]
                 else None
             ),
         }
