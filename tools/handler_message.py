@@ -8,6 +8,16 @@ def handle_command(data,plc_connector):
         parsed = json.loads(data)
 
         command = parsed.get("pattern")  # pattern dari NestJS (turn_on / turn_off)
+
+        if command == "all_on":
+            print(f"🌑 TURN ALL ON ")
+            plc_connector.turn_on_all()
+            return True
+        elif command == "all_off":
+            print(f"🌑 TURN ALL OFF ")
+            plc_connector.turn_off_all()
+            return True
+
         payload = parsed.get("data", {}) # isi emit (address, dll)
 
         address = payload.get("address")
@@ -47,12 +57,6 @@ def handle_command(data,plc_connector):
         elif command == "turn_off":
             print(f"🌑 TURN OFF {address} → {reg_device} = {index}")
             plc_connector.reset_and_write(reg_device, off_device, index, mode="off")
-        elif command == "all_on":
-            print(f"🌑 TURN ALL ON ")
-            plc_connector.turn_on_all()
-        elif command == "all_off":
-            print(f"🌑 TURN ALL OFF ")
-            plc_connector.turn_off_all()
         else:
             print("❓ Unknown command:", command)
 
