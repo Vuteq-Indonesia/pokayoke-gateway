@@ -134,9 +134,11 @@ class PLCConnector:
         if self.listener_thread:
             self.listener_thread.join(timeout=1)
             print("🛑 Listener D10 berhenti.")
+
     def reset_registers(self):
-        """Booting animation lalu reset semua register ke 0"""
+        """Booting animation lalu test ON/OFF semua register lalu reset ke 0"""
         already_reset = set()
+        all_devices = set()
 
         # 🔹 Booting animation
         try:
@@ -144,48 +146,103 @@ class PLCConnector:
             self.batch_write("D6", [6])
             self.batch_write("D1", [1])
             self.batch_write("D2", [2])
-            print("🚀 Booting... (D5=5, D6=6, D1=1, D2=2)")
+            self.batch_write("D4", [4])
+            self.batch_write("D3", [3])
+            self.batch_write("D7", [7])
+            self.batch_write("D8", [8])
+            print("🚀 Booting animation start")
         except Exception as e:
             print(f"⚠️ Gagal set animasi booting: {e}")
 
-        # Tunggu 5 detik
         time.sleep(5)
 
-        # Reset nilai animasi ke 0
+        # 🔹 Reset animasi booting ke 0
         try:
-            self.batch_write("D5", [0])
-            self.batch_write("D6", [0])
-            self.batch_write("D1", [0])
-            self.batch_write("D2", [0])
-            print("🔄 Booting selesai, D5/D6/D1/D2 direset ke 0")
+            for d in ["D5", "D6", "D1", "D2", "D4", "D3", "D7", "D8"]:
+                self.batch_write(d, [0])
+            print("🔄 Booting selesai")
         except Exception as e:
             print(f"⚠️ Gagal reset animasi booting: {e}")
 
-        # 🔹 Reset semua register dari PLC_REGISTERS
+        # 🔹 Kumpulkan semua device dari PLC_REGISTERS
         for group, items in PLC_REGISTERS.items():
             for regmap in items:
                 for key in ["reg", "button", "lamp"]:
                     device = regmap.get(key)
-                    if device and device not in already_reset:
-                        try:
-                            self.batch_write(device, [0])
-                            already_reset.add(device)
-                        except Exception as e:
-                            print(f"⚠️ Gagal reset {device}: {e}")
-        # 🔹 Reset D10 terakhir
-        try:
-            self.batch_write("D10", [0])
-            print("✅ D10 direset ke 0")
-            # 🔹 Post ke API setelah D10 reset
-            try:
-                resp = requests.post("http://103.103.23.26:1000/v1/lamp/init-check", timeout=5)
-                print(f"🌐 API response {resp.status_code}: {resp.text}")
-            except Exception as e:
-                print(f"⚠️ Gagal call API init-check: {e}")
-        except Exception as e:
-            print(f"⚠️ Gagal reset D10: {e}")
+                    if device:
+                        all_devices.add(device)
 
-        print("♻️ Semua register direset ke 0")
+        # Tambahkan D10 juga
+        all_devices.add("D10")
+
+        # ==============================
+        # 🔹 TEST: NYALA SEMUA
+        # ==============================
+        print("💡 Semua device ON")
+        for device in all_devices:
+            try:
+                self.batch_write(device, [1])
+            except Exception as e:
+                print(f"⚠️ Gagal ON {device}: {e}")
+
+        time.sleep(5)
+
+        # ==============================
+        # 🔹 Semua OFF
+        # ==============================
+        print("🌑 Semua device OFF")
+        for device in all_devices:
+            try:
+                self.batch_write(device, [0])
+            except Exception as e:
+                print(f"⚠️ Gagal OFF {device}: {e}")
+
+        time.sleep(1)
+
+        # ==============================
+        # 🔹 Blink: hidup → mati → hidup → mati
+        # ==============================
+        for i in range(2):  # 2x blink (hidup/mati)
+            print(f"🔁 Blink cycle {i + 1}")
+
+            # ON
+            for device in all_devices:
+                try:
+                    self.batch_write(device, [1])
+                except:
+                    pass
+            time.sleep(1)
+
+            # OFF
+            for device in all_devices:
+                try:
+                    self.batch_write(device, [0])
+                except:
+                    pass
+            time.sleep(1)
+
+        # ==============================
+        # 🔹 Final Reset ke 0
+        # ==============================
+        print("♻️ Final reset semua ke 0")
+        for device in all_devices:
+            try:
+                self.batch_write(device, [0])
+            except Exception as e:
+                print(f"⚠️ Gagal reset {device}: {e}")
+
+        # 🔹 Post ke API setelah D10 reset
+        try:
+            resp = requests.post(
+                "http://103.103.23.26:1000/v1/lamp/init-check",
+                timeout=5
+            )
+            print(f"🌐 API response {resp.status_code}: {resp.text}")
+        except Exception as e:
+            print(f"⚠️ Gagal call API init-check: {e}")
+
+        print("✅ Semua register selesai proses reset & test ON/OFF")
+
     def batch_write(self, device, values):
         if device is None:
             print("⚠️ Device kosong, skip write")
