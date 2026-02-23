@@ -135,9 +135,41 @@ class PLCConnector:
             self.listener_thread.join(timeout=1)
             print("🛑 Listener D10 berhenti.")
 
+    def turn_on_all(self):
+        try:
+            self.batch_write("D5", [5])
+            self.batch_write("D6", [6])
+            self.batch_write("D1", [1])
+            self.batch_write("D2", [2])
+            self.batch_write("D4", [4])
+            self.batch_write("D3", [3])
+            self.batch_write("D7", [7])
+            self.batch_write("D8", [8])
+            print("All Devices ON")
+            return True
+        except Exception as e:
+            print(f"Error turn on all devices: {e}")
+            return False
+
+    def turn_off_all(self):
+        try:
+            self.batch_write("D5", [0])
+            self.batch_write("D6", [0])
+            self.batch_write("D1", [0])
+            self.batch_write("D2", [0])
+            self.batch_write("D4", [0])
+            self.batch_write("D3", [0])
+            self.batch_write("D7", [0])
+            self.batch_write("D8", [0])
+            print("All Devices OFF")
+            return True
+        except Exception as e:
+            print(f"Error turn off all devices: {e}")
+            return False
+
     def reset_registers(self):
         """Booting animation lalu test ON/OFF semua register lalu reset ke 0"""
-        already_reset = set()
+        # already_reset = set()
         all_devices = set()
 
         # 🔹 Booting animation
