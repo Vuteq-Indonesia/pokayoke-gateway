@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import docker
 import httpx
@@ -6,6 +7,7 @@ import requests
 
 from tools.register import PLC_REGISTERS
 
+logger = logging.getLogger(__name__)
 
 def int_to_button_name(value: int) -> str | None:
     """Konversi nilai integer PLC ke nama tombol (misal 225 -> E1, 3600 -> E10)."""
@@ -37,11 +39,11 @@ class PLCConnector:
             self.mc.setaccessopt(commtype="binary")
             self.mc.timeout = self.timeout
 
-            print(f"🔄 Mencoba koneksi ke PLC {self.ip}:{self.port} ...")
+            logger.info(f"🔄 Mencoba koneksi ke PLC {self.ip}:{self.port} ...")
             self.mc.connect(self.ip, self.port)
 
             self.connected = True
-            print("✅ Terhubung ke PLC!")
+            logger.info("✅ Terhubung ke PLC!")
 
             # Reset register setelah connect
             self.reset_registers()
@@ -54,7 +56,7 @@ class PLCConnector:
                     daemon=True
                 )
                 self.listener_thread.start()
-                print("▶️ Listener D10 dimulai...")
+                logger.info("▶️ Listener D10 dimulai...")
 
             # Jalankan listener tombol (E, F, dll)
             # self.start_listeners()
@@ -63,7 +65,7 @@ class PLCConnector:
 
         except Exception as e:
             self.connected = False
-            print(f"❌ Gagal konek PLC {self.ip}:{self.port}: {e}")
+            logger.error(f"❌ Gagal konek PLC {self.ip}:{self.port}: {e}")
             return False
 
     def start_listeners(self):
@@ -78,7 +80,7 @@ class PLCConnector:
                 daemon=True
             )
             self.listener_thread.start()
-            print("▶️ Listener D10 dimulai...")
+            logger.info("▶️ Listener D10 dimulai...")
 
         # Listener tombol (E, F, dll)
         if not getattr(self, "button_thread", None) or not self.button_thread.is_alive():
@@ -87,7 +89,7 @@ class PLCConnector:
                 daemon=True
             )
             self.button_thread.start()
-            print("▶️ Listener tombol dimulai...")
+            logger.info("▶️ Listener tombol dimulai...")
 
     def disconnect(self):
         """Putuskan koneksi dan hentikan listener"""
@@ -95,9 +97,9 @@ class PLCConnector:
         self.connected = False
         try:
             self.mc.close()
-            print("🔌 Koneksi ke PLC diputus.")
+            logger.info("🔌 Koneksi ke PLC diputus.")
         except Exception as e:
-            print(f"⚠️ Gagal menutup koneksi PLC: {e}")
+            logger.warning(f"⚠️ Gagal menutup koneksi PLC: {e}")
 
     def auto_connect(self):
         if self.auto_connect_running:
@@ -106,18 +108,18 @@ class PLCConnector:
         self.auto_connect_running = True
         while self.auto_reconnect:
             if not self.connected:
-                print("⚠️ PLC belum terkoneksi, mencoba ulang...")
+                logger.warning("⚠️ PLC belum terkoneksi, mencoba ulang...")
                 self.connect()
             time.sleep(5)
 
     def listen_d10(self):
         """Listener cek D10, jika 1 maka reboot"""
-        print("👂 Listener D10 aktif...")
+        logger.info("👂 Listener D10 aktif...")
         while not self.stop_listener:
             try:
                 values = self.batch_read("D10", 1)
                 if values and values[0] == 1:
-                    print("⚡ D10 terdeteksi = 1 → Reboot sistem...")
+                    logger.info("⚡ D10 terdeteksi = 1 → Reboot sistem...")
                     # sys.exit(1)
                     client = docker.from_env()
 
@@ -126,14 +128,15 @@ class PLCConnector:
                     container.restart()
                     break  # stop loop setelah reboot dipanggil
             except Exception as e:
-                print(f"⚠️ Listener error: {e}")
+                logger.warning(f"⚠️ Listener error: {e}")
             time.sleep(2)  # cek tiap 2 detik
+
     def stop_listening(self):
         """Stop listener secara manual"""
         self.stop_listener = True
         if self.listener_thread:
             self.listener_thread.join(timeout=1)
-            print("🛑 Listener D10 berhenti.")
+            logger.info("🛑 Listener D10 berhenti.")
 
     def turn_on_all(self):
         try:
@@ -145,10 +148,10 @@ class PLCConnector:
             self.batch_write("D3", [3])
             self.batch_write("D7", [7])
             self.batch_write("D8", [8])
-            print("All Devices ON")
+            logger.info("All Devices ON")
             return True
         except Exception as e:
-            print(f"Error turn on all devices: {e}")
+            logger.error(f"Error turn on all devices: {e}")
             return False
 
     def turn_off_all(self):
@@ -161,145 +164,111 @@ class PLCConnector:
             self.batch_write("D3", [0])
             self.batch_write("D7", [0])
             self.batch_write("D8", [0])
-            print("All Devices OFF")
+            logger.info("All Devices OFF")
             return True
         except Exception as e:
-            print(f"Error turn off all devices: {e}")
+            logger.error(f"Error turn off all devices: {e}")
             return False
 
     def reset_registers(self):
-        """Booting animation lalu test ON/OFF semua register lalu reset ke 0"""
-        # already_reset = set()
+        """Booting animation, Running LED, Blink, dan Reset (Total Sleep: 30 Detik)"""
         all_devices = set()
+        boot_sequence = ["D5", "D6", "D1", "D2", "D4", "D3", "D7", "D8"]
 
-        # 🔹 Booting animation
+        # 🔹 Post ke API restart
         try:
-            self.batch_write("D5", [5])
-            self.batch_write("D6", [6])
-            self.batch_write("D1", [1])
-            self.batch_write("D2", [2])
-            self.batch_write("D4", [4])
-            self.batch_write("D3", [3])
-            self.batch_write("D7", [7])
-            self.batch_write("D8", [8])
-            print("🚀 Booting animation start")
+            resp = requests.post("http://192.168.60.75:1000/v1/socket/restarting", timeout=5)
+            logger.info(f"🌐 API starting: {resp.status_code}")
         except Exception as e:
-            print(f"⚠️ Gagal set animasi booting: {e}")
+            logger.warning(f"⚠️ Gagal call API restart: {e}")
 
+        # ==========================================
+        # 1. ANIMASI BOOTING (5 Detik)
+        # ==========================================
+        logger.info("🚀 Phase 1: Booting animation")
+        for i, d in enumerate(boot_sequence):
+            self.batch_write(d, [i + 1])
         time.sleep(5)
 
-        # 🔹 Reset animasi booting ke 0
-        try:
-            for d in ["D5", "D6", "D1", "D2", "D4", "D3", "D7", "D8"]:
-                self.batch_write(d, [0])
-            print("🔄 Booting selesai")
-        except Exception as e:
-            print(f"⚠️ Gagal reset animasi booting: {e}")
+        # ==========================================
+        # 2. RUNNING LED - BERGANTIAN (8 Detik)
+        # ==========================================
+        logger.info("🏃 Phase 2: Running LED effect")
+        for d in boot_sequence:
+            self.batch_write(d, [1])
+            time.sleep(0.5)  # Total 4 detik (8 device * 0.5s)
+            self.batch_write(d, [0])
+            time.sleep(0.5)  # Total 4 detik (8 device * 0.5s)
 
-        # 🔹 Kumpulkan semua device dari PLC_REGISTERS
+        # 🔹 Ambil semua device dari mapping
         for group, items in PLC_REGISTERS.items():
             for regmap in items:
                 for key in ["reg", "button", "lamp"]:
                     device = regmap.get(key)
-                    if device:
-                        all_devices.add(device)
-
-        # Tambahkan D10 juga
+                    if device: all_devices.add(device)
         all_devices.add("D10")
+        device_list = sorted(list(all_devices))
 
-        # ==============================
-        # 🔹 TEST: NYALA SEMUA
-        # ==============================
-        print("💡 Semua device ON")
-        for device in all_devices:
-            try:
-                self.batch_write(device, [1])
-            except Exception as e:
-                print(f"⚠️ Gagal ON {device}: {e}")
-
+        # ==========================================
+        # 3. TEST ON SEMUA (5 Detik)
+        # ==========================================
+        logger.info("💡 Phase 3: All devices ON")
+        for device in device_list:
+            self.batch_write(device, [1])
         time.sleep(5)
 
-        # ==============================
-        # 🔹 Semua OFF
-        # ==============================
-        print("🌑 Semua device OFF")
-        for device in all_devices:
-            try:
-                self.batch_write(device, [0])
-            except Exception as e:
-                print(f"⚠️ Gagal OFF {device}: {e}")
-
-        time.sleep(1)
-
-        # ==============================
-        # 🔹 Blink: hidup → mati → hidup → mati
-        # ==============================
-        for i in range(2):  # 2x blink (hidup/mati)
-            print(f"🔁 Blink cycle {i + 1}")
-
-            # ON
-            for device in all_devices:
-                try:
-                    self.batch_write(device, [1])
-                except:
-                    pass
-            time.sleep(1)
-
+        # ==========================================
+        # 4. BLINK FAST 4X (8 Detik)
+        # ==========================================
+        logger.info("🔁 Phase 4: Blink cycle")
+        for i in range(4):
             # OFF
-            for device in all_devices:
-                try:
-                    self.batch_write(device, [0])
-                except:
-                    pass
+            for device in device_list: self.batch_write(device, [0])
+            time.sleep(1)
+            # ON
+            for device in device_list: self.batch_write(device, [1])
             time.sleep(1)
 
-        # ==============================
-        # 🔹 Final Reset ke 0
-        # ==============================
-        print("♻️ Final reset semua ke 0")
-        for device in all_devices:
-            try:
-                self.batch_write(device, [0])
-            except Exception as e:
-                print(f"⚠️ Gagal reset {device}: {e}")
+        # ==========================================
+        # 5. FINAL RESET & CLEANUP (4 Detik)
+        # ==========================================
+        logger.info("♻️ Phase 5: Final Reset")
+        for device in device_list:
+            self.batch_write(device, [0])
+        time.sleep(4)
 
-        # 🔹 Post ke API setelah D10 reset
+        # 🔹 Post ke API Akhir
         try:
-            resp = requests.post(
-                "http://103.103.23.26:1000/v1/lamp/init-check",
-                timeout=5
-            )
-            print(f"🌐 API response {resp.status_code}: {resp.text}")
+            requests.post("http://192.168.60.75:1000/v1/lamp/init-check", timeout=5)
+            requests.post("http://192.168.60.75:1000/v1/socket/restarting", timeout=5)
+            logger.info("✅ Sequence complete (30s)")
         except Exception as e:
-            print(f"⚠️ Gagal call API init-check: {e}")
-
-        print("✅ Semua register selesai proses reset & test ON/OFF")
-
+            logger.warning(f"⚠️ API Final Error: {e}")
     def batch_write(self, device, values):
         if device is None:
-            print("⚠️ Device kosong, skip write")
+            logger.debug("⚠️ Device kosong, skip write")
             return False
         if not self.connected:
-            print("⚠️ PLC belum terkoneksi!")
+            logger.warning("⚠️ PLC belum terkoneksi!")
             return False
         try:
             self.mc.batchwrite_wordunits(headdevice=device, values=values)
-            print(f"✍️ Write {values} ke {device} sukses")
+            logger.debug(f"✍️ Write {values} ke {device} sukses")
             return True
         except (OSError, TimeoutError) as e:
             # error komunikasi
             self.connected = False
-            print(f"❌ Koneksi hilang saat write {device}: {e}")
+            logger.error(f"❌ Koneksi hilang saat write {device}: {e}")
             return False
         except Exception as e:
             # error logic (misal device/format salah)
-            print(f"⚠️ Error write ke {device}: {e}")
+            logger.warning(f"⚠️ Error write ke {device}: {e}")
             return False
 
     def batch_read(self, device, size=None):
         """Baca data dari PLC"""
         if not self.connected:
-            print("⚠️ PLC belum terkoneksi!")
+            logger.warning("⚠️ PLC belum terkoneksi!")
             return None
 
         try:
@@ -311,12 +280,12 @@ class PLCConnector:
                 return results
             else:
                 values = self.mc.batchread_wordunits(headdevice=device, readsize=size)
-                print(f"📖 Read {device} ({size}): {values}")
+                logger.debug(f"📖 Read {device} ({size}): {values}")
                 return values
 
         except Exception as e:
             self.connected = False  # tandai lost connection
-            print(f"❌ Gagal read {device}: {e}")
+            logger.error(f"❌ Gagal read {device}: {e}")
             return None
 
     def reset_and_write(self, reg_device, off_device, index, mode="on"):
@@ -331,31 +300,32 @@ class PLCConnector:
                 self.batch_write(reg_device, [0])
                 self.batch_write(off_device, [index])
             else:
-                print(f"⚠️ Mode {mode} tidak dikenal")
+                logger.warning(f"⚠️ Mode {mode} tidak dikenal")
                 return False
             return True
         except Exception as e:
-            print(f"❌ Gagal reset_and_write {reg_device}/{off_device}: {e}")
+            logger.error(f"❌ Gagal reset_and_write {reg_device}/{off_device}: {e}")
             return False
+
     def reset_button(self, reg_device):
         try:
             self.batch_write(reg_device, [0])
             return True
         except Exception as e:
-            print(f"❌ Gagal reset_and_write {reg_device}: {e}")
+            logger.error(f"❌ Gagal reset_and_write {reg_device}: {e}")
             return False
 
     async def send_lamp_disable(self, button, addr):
         if button.startswith("E"):
-            url = "http://103.102.23.26:1000/v1/lamp/disable"
+            url = "http://192.168.60.75:1000/v1/lamp/disable"
             payload = {"lampId": self}
             async with httpx.AsyncClient(timeout=3) as client:
                 res = await client.post(url, json=payload)
-                print(f"🌐 API {self} -> {res.status_code}")
+                logger.info(f"🌐 API {self} -> {res.status_code}")
                 self.reset_button(addr)
 
     def listen_button(self):
-        print("👂 Listener tombol aktif...")
+        logger.info("👂 Listener tombol aktif...")
 
         button_addrs = []
         for group, items in PLC_REGISTERS.items():
@@ -363,7 +333,7 @@ class PLCConnector:
                 if item["button"] and item["button"] not in button_addrs:
                     button_addrs.append(item["button"])
 
-        print(f"🔎 Memantau {len(button_addrs)} register tombol:", button_addrs)
+        logger.info(f"🔎 Memantau {len(button_addrs)} register tombol: {button_addrs}")
 
         last_state = {addr: 0 for addr in button_addrs}
         last_press_time = {addr: 0 for addr in button_addrs}
@@ -375,13 +345,13 @@ class PLCConnector:
             # 🚦 Cek status koneksi
             if not self.connected:
                 if was_connected:
-                    print("⚠️ Listener tombol: PLC terputus, menunggu reconnect...")
+                    logger.warning("⚠️ Listener tombol: PLC terputus, menunggu reconnect...")
                     was_connected = False
                 time.sleep(1)
                 continue
             else:
                 if not was_connected:
-                    print("✅ Listener tombol: PLC tersambung kembali.")
+                    logger.info("✅ Listener tombol: PLC tersambung kembali.")
                     was_connected = True
 
             try:
@@ -406,7 +376,7 @@ class PLCConnector:
                         if not btn_code:
                             continue
 
-                        print(f"🔘 Tombol {btn_code} terdeteksi di {addr} (value={val})")
+                        logger.info(f"🔘 Tombol {btn_code} terdeteksi di {addr} (value={val})")
                         asyncio.run_coroutine_threadsafe(
                             self.send_lamp_disable(btn_code, addr), self.loop
                         )
@@ -416,7 +386,7 @@ class PLCConnector:
                         last_state[addr] = 0
 
             except Exception as e:
-                print(f"⚠️ Listener tombol error: {e}")
+                logger.warning(f"⚠️ Listener tombol error: {e}")
                 time.sleep(2)
 
             time.sleep(0.1)

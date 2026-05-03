@@ -2,7 +2,9 @@ import os
 from dotenv import load_dotenv
 import pg8000
 from pg8000.exceptions import InterfaceError, DatabaseError
+import logging
 
+logger = logging.getLogger(__name__)
 
 def api_check_postgres():
     """Cek koneksi ke PostgreSQL berdasarkan konfigurasi di .env"""
@@ -30,9 +32,12 @@ def api_check_postgres():
         cur.close()
         conn.close()
 
-        print(f"✅ Database connected: {DB_NAME} ({now})")
+        logger.info(f"Database connected: {DB_NAME} ({now})")
         return True
 
     except (InterfaceError, DatabaseError) as e:
-        print(f"❌ Database connection failed: {e}")
+        logger.error(f"Database connection failed: {e}")
+        return False
+    except Exception as e:
+        logger.exception(f"Unexpected error during database connection check: {e}")
         return False

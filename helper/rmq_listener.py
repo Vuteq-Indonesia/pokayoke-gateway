@@ -1,9 +1,10 @@
 import traceback
-
 import pika
 import time
+import logging
 from tools.handler_message import handle_command
 
+logger = logging.getLogger(__name__)
 
 class RMQClient:
     def __init__(
@@ -45,15 +46,15 @@ class RMQClient:
                     properties=pika.BasicProperties(delivery_mode=2)  # persistent
                 )
 
-                print(f"✅ Pesan terkirim ke {self.queues_string}: {message}")
+                logger.info(f"Pesan terkirim ke {self.queues_string}: {message}")
                 connection.close()
                 return True
 
             except Exception as e:
-                print(f"❌ Gagal kirim pesan RMQ: {e}")
+                logger.error(f"Gagal kirim pesan RMQ: {e}")
                 if not retry:
                     return False
-                print("🔄 Coba lagi dalam 3 detik...")
+                logger.info("Coba lagi dalam 3 detik...")
                 time.sleep(3)
 
     def listen(self):
@@ -72,25 +73,25 @@ class RMQClient:
                 channel = connection.channel()
                 channel.queue_declare(queue=self.queues_string, durable=True)
 
-                print(f"✅ Terhubung ke RabbitMQ {self.broker_ip}:{self.broker_port}, listening queue: {self.queues_string}")
+                logger.info(f"Terhubung ke RabbitMQ {self.broker_ip}:{self.broker_port}, listening queue: {self.queues_string}")
 
                 # default callback
                 def callback(ch, method, properties, body):
                     try:
                         data = body.decode()
-                        print(f"📩 Pesan diterima: {data}")
+                        logger.debug(f"Pesan diterima: {data}")
 
                         if handle_command:
                             success = handle_command(data, self.plc_connector)  # <<<< panggil dengan PLC
                             if success:
                                 ch.basic_ack(delivery_tag=method.delivery_tag)
                             else:
-                                print("⚠️ Pesan gagal diproses, tidak ack.")
+                                logger.warning("Pesan gagal diproses, tidak ack.")
                         else:
                             ch.basic_ack(delivery_tag=method.delivery_tag)
 
                     except Exception as e:
-                        print(f"❌ Error saat handle message: {e}")
+                        logger.exception(f"Error saat handle message: {e}")
 
                 channel.basic_consume(
                     queue=self.queues_string,
@@ -98,11 +99,10 @@ class RMQClient:
                     auto_ack=False
                 )
 
-                print("👂 Menunggu pesan... (CTRL+C untuk stop)")
+                logger.info("Menunggu pesan... (CTRL+C untuk stop)")
                 channel.start_consuming()
 
             except Exception as e:
-                print(f"❌ Listener terputus: {e}")
-                traceback.print_exc()  # <--- ini buat print full stacktrace
-                print("🔄 Reconnect dalam 3 detik...")
+                logger.exception(f"Listener terputus: {e}")
+                logger.info("Reconnect dalam 3 detik...")
                 time.sleep(3)
