@@ -240,7 +240,7 @@ class PLCConnector:
         # 🔹 Post ke API Akhir
         try:
             requests.post("http://192.168.60.75:1000/v1/lamp/init-check", timeout=5)
-            requests.post("http://192.168.60.75:1000/v1/socket/restarting", timeout=5)
+            requests.post("http://192.168.60.75:1000/v1/socket/restarted", timeout=5)
             logger.info("✅ Sequence complete (30s)")
         except Exception as e:
             logger.warning(f"⚠️ API Final Error: {e}")
